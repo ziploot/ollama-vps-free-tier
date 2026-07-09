@@ -1,5 +1,5 @@
 # ====================================================================
-# 🦙 Ollama VPS Free-Tier 1-Click Auto-Installer (Windows)
+# 🦙 Ollama VPS Free-Tier 1-Click Auto-Installer/Uninstaller (Windows)
 # Created by ZipLoot (https://ziploot.blogspot.com)
 # ====================================================================
 
@@ -8,19 +8,83 @@ $ErrorActionPreference = "Stop"
 
 Clear-Host
 Write-Host "======================================================" -ForegroundColor Cyan
-Write-Host "    🦙 Ollama Windows Free-Tier 1-Click Installer 🦙  " -ForegroundColor Green
+Write-Host "    🦙 Ollama Windows Free-Tier Setup Utility 🦙      " -ForegroundColor Green
 Write-Host "======================================================" -ForegroundColor Cyan
 
 # Check for Admin rights
 $isAdmin = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
 if (-not $isAdmin) {
-    Write-Host "[ERROR] Please run PowerShell as Administrator to install dependencies." -ForegroundColor Red
+    Write-Host "[ERROR] Please run PowerShell as Administrator to configure dependencies." -ForegroundColor Red
     Read-Host "Press Enter to exit..."
     Exit
 }
 
+# Main Menu
+Write-Host "Please select an action:"
+Write-Host "  [1] Install and Configure Ollama (with Remote API)"
+Write-Host "  [2] Uninstall Ollama and Clean Up (Remove models & environment variables)"
+Write-Host "  [3] Exit"
+
+$menuChoice = ""
+while ($menuChoice -notmatch '^[1-3]$') {
+    $menuChoice = Read-Host "Select choice (1-3) [Default: 1]"
+    if ([string]::IsNullOrWhiteSpace($menuChoice)) { $menuChoice = "1" }
+}
+
+if ($menuChoice -eq "3") {
+    Write-Host "Exiting." -ForegroundColor Yellow
+    Exit
+}
+
+# UNINSTALL ROUTINE
+if ($menuChoice -eq "2") {
+    Write-Host "`n[UNINSTALL] Starting uninstallation of Ollama and cleaning resources..." -ForegroundColor Yellow
+    
+    # 1. Stop Ollama Process
+    Write-Host "[INFO] Stopping Ollama server processes..." -ForegroundColor Cyan
+    $ollamaProcess = Get-Process ollama -ErrorAction SilentlyContinue
+    if ($ollamaProcess) {
+        Stop-Process -Name "ollama" -Force -ErrorAction SilentlyContinue
+        Start-Sleep -Seconds 2
+    }
+
+    # 2. Uninstall via Winget
+    Write-Host "[INFO] Uninstalling Ollama application..." -ForegroundColor Cyan
+    cmd.exe /c "winget uninstall Ollama.Ollama --silent"
+
+    # 3. Clean environment variable
+    Write-Host "[INFO] Removing OLLAMA_HOST environment variables..." -ForegroundColor Cyan
+    [Environment]::SetEnvironmentVariable("OLLAMA_HOST", $null, "Machine")
+    if (Test-Path "env:\OLLAMA_HOST") {
+        Remove-Item "env:\OLLAMA_HOST" -Force
+    }
+
+    # 4. Remove User Config & Models Folder
+    $userDataPath = "$env:UserProfile\.ollama"
+    if (Test-Path $userDataPath) {
+        $confirm = Read-Host "Ollama data folder found at $userDataPath (Contains models). Delete it? [Y/n]"
+        if ([string]::IsNullOrWhiteSpace($confirm) -or $confirm -match '^[Yy]') {
+            Write-Host "[INFO] Deleting data folder..." -ForegroundColor Cyan
+            Remove-Item -Path $userDataPath -Recurse -Force -ErrorAction SilentlyContinue
+        }
+    }
+
+    # 5. Clean Program Files directory if exists
+    $programsPath = "$env:LocalAppdata\Programs\Ollama"
+    if (Test-Path $programsPath) {
+        Remove-Item -Path $programsPath -Recurse -Force -ErrorAction SilentlyContinue
+    }
+
+    Write-Host "`n======================================================" -ForegroundColor Green
+    Write-Host "🏆 Ollama Uninstalled & System Cleaned Successfully! 🏆" -ForegroundColor Green
+    Write-Host "======================================================" -ForegroundColor Green
+    Read-Host "Press Enter to exit..."
+    Exit
+}
+
+# INSTALL ROUTINE
 # FRONT-LOAD INPUTS & VALIDATION LOOP
-Write-Host "[STEP 1/3] Front-loading configurations & Model Selection" -ForegroundColor Yellow
+Write-Host "`n[STEP 1/3] Front-loading configurations & Model Selection" -ForegroundColor Yellow
 Write-Host "Please select the quantized LLM you want to install:"
 Write-Host "  [1] Qwen 2.5 Coder 1.5B (Recommended - High accuracy coding/reasoning)"
 Write-Host "  [2] TinyLlama 1.1B (Ultra lightweight & fast generation)"
@@ -106,9 +170,9 @@ if ($LASTEXITCODE -eq 0 -or $true) {
     Write-Host "🏆 Ollama Auto-Setup Completed Successfully! 🏆" -ForegroundColor Green
     Write-Host "======================================================" -ForegroundColor Green
     
-    # Get local IPs
-    $ipAddresses = Get-NetIPAddress -AddressFamily IPv4 | Where-Object { $_.IPAddress -notlike "127.*" -and $_.IPAddress -notlike "169.254.*" } | Select-Object -ExpandProperty IPAddress
-    $primaryIp = if ($ipAddresses) { $ipAddresses[0] } else { "127.0.0.1" }
+    # Safe Array casting for IP addresses to prevent substring conversion of single IP string
+    $ipAddresses = @(Get-NetIPAddress -AddressFamily IPv4 | Where-Object { $_.IPAddress -notlike "127.*" -and $_.IPAddress -notlike "169.254.*" } | Select-Object -ExpandProperty IPAddress)
+    $primaryIp = if ($ipAddresses.Count -gt 0) { $ipAddresses[0] } else { "127.0.0.1" }
     
     Write-Host "`n🚀 Your Ollama endpoint is ready!" -ForegroundColor Cyan
     if ($exposeConfirm -match '^[Yy]') {
