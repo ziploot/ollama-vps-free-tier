@@ -75,12 +75,19 @@ if ($menuChoice -eq "2") {
         Remove-Item -Path $programsPath -Recurse -Force -ErrorAction SilentlyContinue
     }
 
+    # 6. Clean Registry Uninstall entries (if left behind by manual file deletion)
+    Write-Host "[INFO] Cleaning up Windows registry uninstall entries..." -ForegroundColor Cyan
+    Get-ChildItem -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall" -ErrorAction SilentlyContinue | Where-Object {
+        (Get-ItemProperty $_.PsPath -ErrorAction SilentlyContinue).DisplayName -like "*Ollama*"
+    } | Remove-Item -Force -Recurse -ErrorAction SilentlyContinue
+
     Write-Host "`n======================================================" -ForegroundColor Green
     Write-Host "🏆 Ollama Uninstalled & System Cleaned Successfully! 🏆" -ForegroundColor Green
     Write-Host "======================================================" -ForegroundColor Green
     Read-Host "Press Enter to exit..."
     Exit
 }
+
 
 # INSTALL ROUTINE
 # FRONT-LOAD INPUTS & VALIDATION LOOP
