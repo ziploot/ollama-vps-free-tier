@@ -1,6 +1,6 @@
 #!/bin/bash
 # ====================================================================
-# 🦙 Ollama VPS Free-Tier 1-Click Auto-Installer (Linux)
+# 🦙 Ollama VPS Free-Tier 1-Click Auto-Installer/Uninstaller (Linux)
 # Created by ZipLoot (https://ziploot.blogspot.com)
 # ====================================================================
 
@@ -14,7 +14,7 @@ NC='\033[0;37m' # No Color
 
 clear
 echo -e "${CYAN}======================================================${NC}"
-echo -e "${GREEN}    🦙 Ollama VPS Free-Tier 1-Click Installer 🦙      ${NC}"
+echo -e "${GREEN}    🦙 Ollama VPS Free-Tier Setup Utility 🦙        ${NC}"
 echo -e "${CYAN}======================================================${NC}"
 
 # Check for root/sudo privileges
@@ -24,6 +24,86 @@ if [ "$EUID" -ne 0 ]; then
     exit 1
 fi
 
+# Main Menu
+echo -e "Please select an action:"
+echo -e "  [1] Install and Configure Ollama (with Swap & Remote API)"
+echo -e "  [2] Uninstall Ollama and Clean Up (Remove models, swap & configs)"
+echo -e "  [3] Exit"
+
+MENU_CHOICE=""
+while [[ ! "$MENU_CHOICE" =~ ^[1-3]$ ]]; do
+    read -p "Select choice (1-3) [Default: 1]: " MENU_CHOICE
+    MENU_CHOICE=${MENU_CHOICE:-1}
+done
+
+if [ "$MENU_CHOICE" -eq 3 ]; then
+    echo -e "${YELLOW}Exiting.${NC}"
+    exit 0
+fi
+
+# UNINSTALL ROUTINE
+if [ "$MENU_CHOICE" -eq 2 ]; then
+    echo -e "\n${YELLOW}[UNINSTALL] Starting uninstallation of Ollama and cleaning resources...${NC}"
+    
+    # 1. Stop and Disable Service
+    if systemctl is-active --quiet ollama; then
+        echo -e "[INFO] Stopping Ollama service..."
+        sudo systemctl stop ollama
+    fi
+    if systemctl is-enabled --quiet ollama &>/dev/null; then
+        echo -e "[INFO] Disabling Ollama service..."
+        sudo systemctl disable ollama &>/dev/null
+    fi
+
+    # 2. Remove Systemd Service and Configuration
+    echo -e "[INFO] Removing systemd service files..."
+    sudo rm -f /etc/systemd/system/ollama.service
+    sudo rm -rf /etc/systemd/system/ollama.service.d
+    sudo systemctl daemon-reload
+
+    # 3. Remove Binary
+    if command -v ollama &> /dev/null; then
+        OLLAMA_PATH=$(which ollama)
+        echo -e "[INFO] Removing Ollama binary at ${OLLAMA_PATH}..."
+        sudo rm -f "$OLLAMA_PATH"
+    fi
+    sudo rm -f /usr/local/bin/ollama
+    sudo rm -f /usr/bin/ollama
+
+    # 4. Remove Config and Models Data
+    echo -e "[INFO] Deleting Ollama data directory (~/.ollama and /usr/share/ollama)..."
+    sudo rm -rf /usr/share/ollama
+    sudo rm -rf ~/.ollama
+    sudo rm -rf /home/*/.ollama
+    
+    # Remove user
+    if id "ollama" &>/dev/null; then
+        echo -e "[INFO] Removing ollama system user..."
+        sudo userdel ollama &>/dev/null
+    fi
+
+    # 5. Remove Swap Partition (if created by us)
+    if [ -f /swapfile ]; then
+        read -p "A swapfile (/swapfile) was detected. Do you want to disable and delete it? [Y/n]: " SWAP_DEL
+        SWAP_DEL=${SWAP_DEL:-Y}
+        if [[ "$SWAP_DEL" =~ ^[Yy]$ ]]; then
+            echo -e "[INFO] Deactivating swap file..."
+            sudo swapoff /swapfile
+            echo -e "[INFO] Removing swap file..."
+            sudo rm -f /swapfile
+            echo -e "[INFO] Removing swap entry from /etc/fstab..."
+            sudo sed -i '\|/swapfile|d' /etc/fstab
+            echo -e "${GREEN}[SUCCESS] Swap partition successfully removed.${NC}"
+        fi
+    fi
+
+    echo -e "\n${GREEN}======================================================${NC}"
+    echo -e "${GREEN}🏆 Ollama Uninstalled & System Cleaned Successfully! 🏆${NC}"
+    echo -e "${GREEN}======================================================${NC}"
+    exit 0
+fi
+
+# INSTALL ROUTINE
 # Pre-flight Check: Supported OS
 if ! command -v apt-get &> /dev/null && ! command -v yum &> /dev/null; then
     echo -e "${RED}[ERROR] Package manager not supported. This installer requires APT (Ubuntu/Debian) or YUM (CentOS/RHEL).${NC}"
@@ -31,7 +111,7 @@ if ! command -v apt-get &> /dev/null && ! command -v yum &> /dev/null; then
 fi
 
 # FRONT-LOAD INPUTS & VALIDATION LOOP
-echo -e "${YELLOW}[STEP 1/4] Front-loading configurations & Model Selection${NC}"
+echo -e "\n${YELLOW}[STEP 1/4] Front-loading configurations & Model Selection${NC}"
 echo -e "Please select the quantized LLM you want to install:"
 echo -e "  [1] Qwen 2.5 Coder 1.5B (Recommended - High accuracy coding/reasoning) [980MB RAM]"
 echo -e "  [2] TinyLlama 1.1B (Ultra lightweight & fast generation) [680MB RAM]"
