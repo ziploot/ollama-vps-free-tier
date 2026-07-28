@@ -39,3 +39,5 @@ curl -X POST http://[YOUR_VPS_IP]:11434/api/generate -d '{
 
 ---
 *Created and maintained by [ZipLoot](https://ziploot.blogspot.com)*
+
+ 
